@@ -85,9 +85,25 @@ class UnityTcpSender:
             self.queue.put(b"".join([serialized_header, serialized_message]))
 
     def send_unity_message(self, topic, message):
-        if self.queue is not None:
-            serialized_message = ClientThread.serialize_message(topic, message)
-            self.queue.put(serialized_message)
+            if self.queue is not None:
+                serialized_message = ClientThread.serialize_message(topic, message)
+
+                # Vérifier si le message est une image (ou tout autre topic à purger)
+                if topic == "/rgb":
+                    with self.queue_lock:
+                        # Tant que la queue n'est pas vide, retirez les éléments SANS BLOQUER
+                        while not self.queue.empty():
+                            try:
+                                # Retire l'élément de la queue immédiatement (la purge)
+                                self.queue.get_nowait()
+                                # Indique que l'élément a été consommé (important pour le threading)
+                                self.queue.task_done()
+                            except Empty:
+                                # Sécurité, si la queue se vide juste avant le get
+                                break
+                
+                # Ajouter le nouveau message (le plus frais) à la queue.
+                self.queue.put(serialized_message)
 
     def send_unity_service_request(self, topic, service_class, request):
         if self.queue is None:
